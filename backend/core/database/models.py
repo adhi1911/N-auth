@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, DateTime, Integer
 from datetime import datetime
 
-from database import Base
+from .database import Base
 
 class UserSession(Base):
     """Database table for storing user sessions"""
@@ -9,10 +9,12 @@ class UserSession(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, unique=True, index=True)
-    user_id = Column(String, index=True)  
+    user_id = Column(String, index=True) 
+    user_email = Column(String) 
     device_fingerprint = Column(String, index=True)
     device_info = Column(String)  
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime)
-    is_active = Column(String, default="true")
+    closed_at = Column(DateTime)
+    is_active = Column(String, default="true")  

@@ -5,7 +5,8 @@ __pycache__
 #secrets
 .env
 
-
+# db
+backend/auth_sessions.sqlite3
 ## Frontend
 
 frontend/config.js

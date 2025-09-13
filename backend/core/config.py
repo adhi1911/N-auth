@@ -10,3 +10,4 @@ class Config:
     ALGORITHMS = os.getenv("ALGORITHMS")
     CLIENT_ID = os.getenv("CLIENT_ID")
     CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+    MAX_N = os.getenv("MAX_N")

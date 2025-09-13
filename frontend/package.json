@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@fingerprintjs/fingerprintjs": "^4.6.2",
+    "@fingerprintjs/fingerprintjs-pro-react": "^2.7.0",
     "js-cookie": "^3.0.5",
     "next": "^15.5.3",
     "react": "^19.1.0",

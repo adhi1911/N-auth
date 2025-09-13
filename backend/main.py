@@ -1,19 +1,22 @@
 import os 
 import uuid 
 import json 
+import jwt
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from typing import Annotated, Optional
 from fastapi import Depends, HTTPException, Response, Request
 from fastapi.responses import RedirectResponse, JSONResponse
+from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 
 #in-code modules
 from core.config import Config
-from core.schemas import UserClaims
-from core.auth import validate_token
-from core.database.database import Base,engine
+from core.schemas import LoginRequest, SessionResponse, UserClaims
+from core.auth import process_login_token, validate_token, check_session
+from core.database.database import Base , engine, get_db
+from core.database.models import UserSession
 
 app = FastAPI()
 config = Config()
@@ -55,15 +58,47 @@ def get_access_token(code: str, response:Response):
     token_response = requests.post(
         "https://dev-nlex2vytg8hlk2gz.us.auth0.com/oauth/token", data=payload, headers=headers).json()
     
-    if token_response.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to exchange code for tokens")
+    
+    login_id, _,_ = process_login_token(token_response)
 
-    return RedirectResponse(f"http://localhost:3000/callback?access_token={token_response['access_token']}")
 
-@app.get("/orders")
-def get_orders(user: UserClaims = Depends(validate_token)):
-    return {"Status": "You got in buddy",
-            "User": user.sub}
+    return RedirectResponse(f"http://localhost:3000/callback?login_id={login_id}")
+
+@app.get("/session/validate")
+def validate_session(request:Request, db: Session = Depends(get_db)):
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="No session cookie")
+    
+    session = db.query(UserSession).filter_by(
+        session_id=session_id
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Session not found")
+    
+    now = datetime.utcnow()
+    if not session.is_active or session.expires_at <= now:
+        session.is_active = "false"
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Session expired or inactive")
+    
+    session.last_active = now
+    db.commit()
+
+    return {"Success": True, "session_id":session.session_id,"user_id":session.user_id}
+
+
+@app.post("/session/check")
+def post_check_session(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    login_id = payload.login_id
+    device_fp = payload.device_fingerprint
+    device_info = payload.device_info
+
+    check_session(login_id, device_fp, device_info,response,db)
 
 @app.get("/protected")
 def protected_route(user_claims: UserClaims = Depends(validate_token)):
