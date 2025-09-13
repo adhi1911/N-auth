@@ -8,7 +8,7 @@ from jose.exceptions import JWTClaimsError
 
 
 from .config import Config
-from .models import UserClaims
+from .schemas import UserClaims
 
 config = Config()
 security = HTTPBearer()
