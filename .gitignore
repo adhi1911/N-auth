@@ -1,0 +1,9 @@
+## Backend 
+
+# virtual environment
+venv
+
+__pycache__
+
+#secrets
+.env
