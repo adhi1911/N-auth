@@ -8,6 +8,7 @@ from jose import jws, jwt, ExpiredSignatureError, JWTError, JWSError
 from jose.exceptions import JWTClaimsError
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func 
 
 from core.database.models import UserSession
 
@@ -134,8 +135,10 @@ def check_session(  login_id,
 
     now = datetime.utcnow()
 
-    # filter active sessions for the user
-    active_sessions = get_active_sessions_for_user(db, user_email)
+    # # filter active sessions for the user
+    device_list = get_active_devices_for_user(db, user_email)
+    print(device_list)
+    
 
     # check active session for current device
     existing =(
@@ -167,11 +170,13 @@ def check_session(  login_id,
     
     # if new device
     # check for MAX_N
-    # print(int(config.MAX_N), len(active_sessions))
-    if (len(active_sessions) >= int(config.MAX_N)):
-        sessions_list = [{"session_id": s.session_id, "device": s.device_fingerprint, "created_at": s.created_at.isoformat()} for s in active_sessions]
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail={"message":"Max devices reached", "sessions": sessions_list})
+    device_count = len(device_list)
+    if device_ip not in [d["device_ip"] for d in device_list] and device_count >= int(config.MAX_N):
+        raise HTTPException(
+            status_code=403,
+            detail={"message": "Max devices reached", "devices": device_list}
+        )
+
     # if allowed create new session
     session_id = str(uuid.uuid4())
     expires_at = now + timedelta(days=30)
@@ -205,18 +210,30 @@ def check_session(  login_id,
 
     return {"success": True, "session_id": session_id, "message": "New session created"}
 
-def get_active_sessions_for_user(db: Session, user_email: str):
+def get_active_devices_for_user(db: Session, user_email: str):
     now = datetime.utcnow()
-    q = db.query(UserSession).filter(
-        UserSession.user_email == user_email,
-        UserSession.is_active == "true",
-        UserSession.expires_at > now
-    )
-    # if you have closed_at field:
-    if hasattr(UserSession, "closed_at"):
-        q = q.filter(UserSession.closed_at == None)
-    return q.all()
 
+    sessions_per_device = (
+        db.query(
+            UserSession.device_ip,
+            func.count(UserSession.session_id).label("session_count")
+        )
+        .filter(
+            UserSession.user_email == user_email,
+            UserSession.is_active == True,
+            UserSession.expires_at > now
+        )
+        .group_by(UserSession.device_ip)
+        .all()
+    )
+    
+    # Convert to list of dicts for frontend
+    device_list = [
+        {"device_ip": d.device_ip, "session_count": d.session_count} 
+        for d in sessions_per_device
+    ]
+    
+    return device_list
 
 ## authorization functions
 
