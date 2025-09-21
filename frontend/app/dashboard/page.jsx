@@ -1,20 +1,23 @@
 'use client'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { AUTH_CONFIG } from '../../config';
-import Cookies from 'js-cookie';
 
 export default function Dashboard() {
   const router = useRouter()
 
+  const [user, setUser] = useState(null)
+  const [error, setError] = useState(null)
+
+
   const checkProtectedRoute = async () => {
     try {
       // Add your API route check here
-      const token = Cookies.get('access_token');
-      const response = await fetch(`${AUTH_CONFIG.BACKEND_URL}/protected`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+      const response = await fetch(`${AUTH_CONFIG.BACKEND_URL}/profile`,{
+        credentials: "include"
       })
+
+      console.log(response);
 
       if (!response.ok) {
         throw new Error('Authentication failed')
@@ -22,8 +25,16 @@ export default function Dashboard() {
       
       const data = await response.json()
       console.log('Protected route response:', data)
+
+      setUser({
+        userName: data.user.user_id,
+        userEmail: data.user.email
+      })
+
     } catch (error) {
       console.error('Error:', error)
+      setError(err.message)
+      setUser(null)
     }
   }
 
@@ -36,6 +47,19 @@ export default function Dashboard() {
       >
         Check Protected Route
       </button>
+
+      <div className="user-details mt-4">
+        {user ? (
+          <>
+            <p>UserName: {user.userName}</p>
+            <p>UserEmail: {user.userEmail}</p>
+          </>
+        ) : error ? (
+          <p className="text-red-500">Error: {error}</p>
+        ) : (
+          <p>No data loaded</p>
+        )}
+      </div>
     </div>
   )
 }

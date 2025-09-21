@@ -8,12 +8,11 @@ class UserClaims(BaseModel):
 
 class LoginRequest(BaseModel):
     login_id : str
-    device_fingerprint: str
     device_info: Optional[str] = None
 
 class CheckSessionRequest(BaseModel):
     login_id: str
-    device_fingerprint: str
+    # device_ip: str
     device_info: str | None = None
 
 class SessionResponse(BaseModel):

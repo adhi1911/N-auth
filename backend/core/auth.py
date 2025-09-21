@@ -1,6 +1,6 @@
 import requests
 import uuid
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from typing import Annotated
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.security import  HTTPBearer
@@ -74,6 +74,7 @@ def validate_token(credentials: Annotated[HTTPAuthorizationCredentials, Depends(
     ) as error:
         raise HTTPException(status_code=401, detail=str(error))
 
+
 def process_login_token(token_response:str):
 
     access_token = token_response["access_token"]
@@ -104,8 +105,10 @@ def process_login_token(token_response:str):
 ## get user session 
 ## create user session
 
-def check_session(login_id,
-                    device_fp,
+
+
+def check_session(  login_id,
+                    device_ip,
                     device_info,
                     response,
                     db):
@@ -115,6 +118,7 @@ def check_session(login_id,
     - if already active we reuse the same session
     - if not we check MAX_N and create new session accordingly
     """
+    print("Inside check")
     if login_id not in PENDING_LOGINS:
         raise HTTPException(status_code=400,
                             detail="Invalid or expired login")
@@ -122,6 +126,9 @@ def check_session(login_id,
     login_data = PENDING_LOGINS.pop(login_id)
     user_id = login_data["sub"]
     user_email = login_data["email"]
+
+    access_token = login_data["tokens"]["access_token"]
+    refresh_token = login_data["tokens"]["refresh_token"]
 
     # print(user_id, user_email)
 
@@ -134,14 +141,16 @@ def check_session(login_id,
     existing =(
         db.query(UserSession).filter_by(
             user_email = user_email,
-            device_fingerprint = device_fp,
+            device_ip = device_ip,
             device_info = device_info,
-            is_active="true"
+            is_active=True
         ).first()
     )
 
     if existing and existing.expires_at > now:
         existing.last_active = now
+        # existing.access_token = access_token
+
         db.commit()
 
         response.set_cookie(
@@ -171,12 +180,14 @@ def check_session(login_id,
         session_id=session_id,
         user_id=user_id,
         user_email=user_email,
-        device_fingerprint=device_fp,
+        device_ip=device_ip,
         device_info=device_info,
+        access_token=access_token,
+        refresh_token=refresh_token,
         created_at=now,
         last_active=now,
         expires_at=expires_at,
-        is_active="true"
+        is_active=True
     )
     db.add(new_session)
     db.commit()
@@ -190,13 +201,9 @@ def check_session(login_id,
         max_age=int((expires_at - now).total_seconds())
     )
 
-    return SessionResponse(
-        success=True,
-        session_id=session_id,
-        message="New session created"
-    )
+    print("Check out")
 
-
+    return {"success": True, "session_id": session_id, "message": "New session created"}
 
 def get_active_sessions_for_user(db: Session, user_email: str):
     now = datetime.utcnow()
@@ -210,4 +217,52 @@ def get_active_sessions_for_user(db: Session, user_email: str):
         q = q.filter(UserSession.closed_at == None)
     return q.all()
 
+
+## authorization functions
+
+def refresh_access_token(refresh_token: str):
+    payload = {
+        "grant_type":"refresh_token",
+        "client_id": config.CLIENT_ID,
+        "client_secret": config.CLIENT_SECRET,
+        "refresh_token":refresh_token
+    }
+
+    res = requests.post(f"https://{config.DOMAIN}/oauth/token",data=payload)
+    if res.status_code != 200:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Refresh token expired or invalid")
+    
+    return res.json()
+
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Not authenticated")
+    
+    session = db.query(UserSession).filter_by(session_id=session_id, is_active=True).first()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Session not found")
+    
+    try:
+        jwt.decode(
+            token = session.access_token,
+            key = None,
+            algorithms=["RS256"],
+            issuer=f"https://{config.DOMAIN}/",
+            options={"verify_signature":False,"verify_aud":False}
+        )
+    except jwt.ExpiredSignatureError:
+        tokens = refresh_access_token(session.refresh_token)
+        session.access_token = tokens["access_token"]
+        if "refresh_token" in tokens:
+            session.refresh_token = tokens["refresh_token"]
+
+        db.commit()
+
+    return {"user_id": session.user_id, "email": session.user_email}
+
 # print(process_login_token(token))
+

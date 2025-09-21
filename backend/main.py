@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 #in-code modules
 from core.config import Config
 from core.schemas import LoginRequest, SessionResponse, UserClaims
-from core.auth import process_login_token, validate_token, check_session
+from core.auth import get_current_user, process_login_token, validate_token, check_session
 from core.database.database import Base , engine, get_db
 from core.database.models import UserSession
 
@@ -22,10 +22,16 @@ app = FastAPI()
 config = Config()
 
 
+origins = [
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",          # dev
+    "http://192.168.0.101:3000",       # local network
+]
+
 # middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], 
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,23 +42,26 @@ Base.metadata.create_all(bind = engine)
 
 @app.get("/login")
 def back_login():
+    print("In login")
     return RedirectResponse(
         "https://dev-nlex2vytg8hlk2gz.us.auth0.com/authorize"
         "?response_type=code"
         f"&client_id={config.CLIENT_ID}"
-        "&redirect_uri=http://localhost:8000/token"
+        f"&redirect_uri={config.BACKEND_URI}/token"
         "&scope=offline_access openid profile email" 
         f"&audience={config.API_AUDIENCE}"
     )
 
 @app.get("/token")
 def get_access_token(code: str, response:Response):
+    print("In token")
     payload = (
         "grant_type=authorization_code"
         f"&client_id={config.CLIENT_ID}"
         f"&client_secret={config.CLIENT_SECRET}"
         f"&code={code}"
-        f"&redirect_uri=http://localhost:8000/token"
+        "&scope=offline_access openid profile email"
+        f"&redirect_uri={config.BACKEND_URI}/token"
     )
     headers = {"content-type": "application/x-www-form-urlencoded"}
     token_response = requests.post(
@@ -61,11 +70,13 @@ def get_access_token(code: str, response:Response):
     
     login_id, _,_ = process_login_token(token_response)
 
-
-    return RedirectResponse(f"http://localhost:3000/callback?login_id={login_id}")
+    print("Leaving token")
+    return RedirectResponse(f"{config.FRONTEND_URI}/callback?login_id={login_id}")
+    # return token_response
 
 @app.get("/session/validate")
 def validate_session(request:Request, db: Session = Depends(get_db)):
+    print("session validation")
     session_id = request.cookies.get("session_id")
     if not session_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
@@ -88,17 +99,17 @@ def validate_session(request:Request, db: Session = Depends(get_db)):
     
     session.last_active = now
     db.commit()
-
+    print("Sesssion validation out")
     return {"Success": True, "session_id":session.session_id,"user_id":session.user_id}
 
 
 @app.post("/session/check")
-def post_check_session(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def post_check_session(payload: LoginRequest, request:Request,response: Response, db: Session = Depends(get_db)):
     login_id = payload.login_id
-    device_fp = payload.device_fingerprint
     device_info = payload.device_info
+    device_ip = request.client.host
 
-    check_session(login_id, device_fp, device_info,response,db)
+    check_session(login_id, device_ip, device_info,response,db)
 
 @app.get("/protected")
 def protected_route(user_claims: UserClaims = Depends(validate_token)):
@@ -107,4 +118,15 @@ def protected_route(user_claims: UserClaims = Depends(validate_token)):
         "message": "You got in buddy!",
         "user_id": user_claims.sub,
         "permissions": user_claims.permissions
+    }
+
+
+@app.get("/profile")
+def get_profile(
+    current_user=Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    return {
+        "message": "Protected route",
+        "user": current_user
     }
