@@ -15,6 +15,9 @@ const Callback = () => {
     const [isLoading, setIsLoading] = useState(true)
     const [isForceLoggingOut, setIsForceLoggingOut] = useState(false)
     const [targetDevice, setTargetDevice] = useState(null)
+    const [showConfirmModal, setShowConfirmModal] = useState(false)
+    const [deviceToLogout, setDeviceToLogout] = useState(null)
+
 
     useEffect(() => {
         const parser = new UAParser()
@@ -63,31 +66,58 @@ const Callback = () => {
 
 
     // Handle force logout from another device
-    const handleForceLogout = async (deviceIP) => {
-        try{
+
+    const handleForceLogoutConfirm = (device) => {
+    setDeviceToLogout(device)
+    setShowConfirmModal(true)
+}
+
+    const handleForceLogout = async () => {
+        if (!deviceToLogout) return;
+
+        try {
             setIsForceLoggingOut(true)
-            setTargetDevice(deviceIP)
+            setTargetDevice(deviceToLogout.device_ip)
             
             const res = await fetch(`${AUTH_CONFIG.BACKEND_URL}/logout/force`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json",
+                headers: { 
+                    "Content-Type": "application/json",
                     "Accept": "application/json"
-                 },
+                },
                 credentials: "include",
-                body: JSON.stringify({ device_ip: deviceIP })
+                body: JSON.stringify({ 
+                    device_ip: deviceToLogout.device_ip 
+                })
             })
 
-            if (!res.ok){
+            if (!res.ok) {
                 throw new Error('Failed to logout from device')
             }
 
             const data = await res.json()
+            
+            if (data.success) {
+                // Update UI
+                setErrorData(prev => ({
+                    ...prev,
+                    devices: prev.devices.filter(d => d.device_ip !== deviceToLogout.device_ip)
+                }))
+                
+                // Redirect to continue login
+                const login_id = searchParams.get("login_id")
+                if (login_id) {
+                    window.location.reload()
+                }
+            }
 
-        }catch (e){
+        } catch (e) {
             console.error(e)
-        }finally{
+        } finally {
             setIsForceLoggingOut(false)
             setTargetDevice(null)
+            setShowConfirmModal(false)
+            setDeviceToLogout(null)
         }
     }
 
@@ -108,7 +138,7 @@ const Callback = () => {
                             </p>
                         </div>
                         <button
-                            onClick={() => handleForceLogout(device.device_ip)}
+                            onClick={() => handleForceLogoutConfirm(device)}
                             disabled={isForceLoggingOut}
                             className={`
                                 text-[#FF4E64] text-xs px-3 py-1.5 rounded border 
@@ -131,6 +161,43 @@ const Callback = () => {
                     </div>
                 </div>
             )
+
+        const ConfirmationModal = () => {
+            if (!showConfirmModal || !deviceToLogout) return null
+
+            return (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-[#1B2B4B] border border-[#2C3B5B] rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+                        <h3 className="text-xl font-semibold text-white mb-2">Confirm Force Logout</h3>
+                        <p className="text-[#94A3B8] mb-4">
+                            Are you sure you want to force logout all sessions from this device?
+                        </p>
+                        <div className="bg-[#131B2E] border border-[#2C3B5B] rounded-lg p-4 mb-6">
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
+                                <p className="text-white font-medium">{deviceToLogout.device_name}</p>
+                            </div>
+                            <p className="text-[#94A3B8] text-sm mt-1">{deviceToLogout.device_ip}</p>
+                        </div>
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={() => setShowConfirmModal(false)}
+                                className="flex-1 px-4 py-2 bg-[#2C3B5B] hover:bg-[#3C4B6B] text-white rounded-lg transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleForceLogout}
+                                className="flex-1 px-4 py-2 bg-[#FF4E64] hover:bg-[#FF3954] text-white rounded-lg transition-colors"
+                            >
+                                Force Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
 
     return (
         <div className="min-h-screen bg-[#0F1724]">
@@ -219,8 +286,12 @@ const Callback = () => {
                     </div>
                 ) : null}
             </div>
+            {showConfirmModal && <ConfirmationModal />}
         </div>
     )
 }
 
 export default Callback
+
+
+
