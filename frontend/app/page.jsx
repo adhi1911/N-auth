@@ -9,6 +9,7 @@ export default function Home() {
   const router = useRouter()
   const { isAuthenticated, loading } = useAuth()
   const [activeStep, setActiveStep] = useState(0)
+  const n = AUTH_CONFIG.MAX_N
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -36,19 +37,19 @@ export default function Home() {
   const steps = [
     { 
       title: "New Device Login", 
-      desc: `User attempts login from device # ${AUTH_CONFIG.MAX_N}`, 
+      desc: `User attempts login from device # ${n+1}`, 
       color: "bg-[#4B9EFD]",
       icon: "📱"
     },
     { 
       title: "Session Validation", 
-      desc: "System checks active sessions (3/3)", 
+      desc: `System checks active sessions (${n}/${n})`, 
       color: "bg-[#3B8EEE]",
       icon: "🔍"
     },
     { 
       title: "Limit Check", 
-      desc: "Device limit reached (MAX: 3)", 
+      desc: `Device limit reached (MAX: ${n})`, 
       color: "bg-[#FF4E64]",
       icon: "⚠️"
     },
@@ -158,12 +159,14 @@ export default function Home() {
               </p>
               <div className="inline-flex items-center space-x-2 text-sm text-[#94A3B8]">
                 <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
-                <span>Maximum 3 concurrent devices</span>
+                <span>Maximum {n} concurrent devices</span>
               </div>
             </div>
 
             <a 
-              href="https://github.com/adhi1911/N_device_login" 
+              href="https://github.com/adhi1911/N-auth" 
+              target ="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center space-x-2 text-[#94A3B8] hover:text-white transition-all duration-300 group"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
