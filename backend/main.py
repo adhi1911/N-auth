@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 #in-code modules
 from core.config import Config
 from core.schemas import LoginRequest, SessionResponse, UserClaims
-from core.auth import get_current_user, process_login_token, validate_token, check_session
+from core.auth import get_current_user, process_login_token, validate_token, check_session, logout_session
 from core.database.database import Base , engine, get_db
 from core.database.models import UserSession
 
@@ -23,22 +23,28 @@ config = Config()
 
 
 origins = [
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:3000",          # dev
-    "http://192.168.0.101:3000",       # local network
+    "http://127.0.0.1:8000",
+    "http://192.168.0.101:3000",
+    "http://192.168.0.101:8000"
 ]
 
-# middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, 
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
-
 Base.metadata.create_all(bind = engine)
+
+@app.get("/")
+def root():
+    return "N-auth"
 
 @app.get("/login")
 def back_login():
@@ -74,10 +80,31 @@ def get_access_token(code: str, response:Response):
     return RedirectResponse(f"{config.FRONTEND_URI}/callback?login_id={login_id}")
     # return token_response
 
+
+@app.post("/logout")
+async def logout(request: Request, db:Session = Depends(get_db)):
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        return HTTPException(
+            status_code= status.HTTP_401_UNAUTHORIZED,
+            detail = "No session found"
+        )
+    success = logout_session(session_id, db)
+    if success:
+        response = JSONResponse({"success":True})
+        response.delete_cookie(key="session_id")
+        return response 
+    
+    raise HTTPException(
+        status_code= status.HTTP_400_BAD_REQUEST,
+        detail = "LogoutFailed"
+    )
+
 @app.get("/session/validate")
 def validate_session(request:Request, db: Session = Depends(get_db)):
     print("session validation")
     session_id = request.cookies.get("session_id")
+    # print(session_id)
     if not session_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="No session cookie")
@@ -90,6 +117,7 @@ def validate_session(request:Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Session not found")
     
+    # print(session)
     now = datetime.utcnow()
     if not session.is_active or session.expires_at <= now:
         session.is_active = "false"
@@ -107,9 +135,10 @@ def validate_session(request:Request, db: Session = Depends(get_db)):
 def post_check_session(payload: LoginRequest, request:Request,response: Response, db: Session = Depends(get_db)):
     login_id = payload.login_id
     device_info = payload.device_info
+    device_name = payload.device_name
     device_ip = request.client.host
 
-    check_session(login_id, device_ip, device_info,response,db)
+    check_session(login_id, device_ip, device_info, device_name,response,db)
 
 @app.get("/protected")
 def protected_route(user_claims: UserClaims = Depends(validate_token)):

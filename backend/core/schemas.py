@@ -9,10 +9,11 @@ class UserClaims(BaseModel):
 class LoginRequest(BaseModel):
     login_id : str
     device_info: Optional[str] = None
+    device_name: Optional[str] = None
 
 class CheckSessionRequest(BaseModel):
     login_id: str
-    # device_ip: str
+    device_name: str | None = None
     device_info: str | None = None
 
 class SessionResponse(BaseModel):

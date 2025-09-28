@@ -103,6 +103,23 @@ def process_login_token(token_response:str):
     # print(PENDING_LOGINS)
 
     return login_id, id_token, access_token
+
+
+def logout_session(session_id: str, db:Session):
+    session = db.query(UserSession).filter_by(
+        session_id = session_id,
+        is_active = True
+    ).first()
+
+    if session:
+        session.is_active = False
+        session.closed_at = datetime.utcnow()
+        session.closed_reason = "user_logout"
+        db.commit()
+
+        return True
+    return False
+
 ## get user session 
 ## create user session
 
@@ -111,6 +128,7 @@ def process_login_token(token_response:str):
 def check_session(  login_id,
                     device_ip,
                     device_info,
+                    device_name,
                     response,
                     db):
     """
@@ -146,6 +164,7 @@ def check_session(  login_id,
             user_email = user_email,
             device_ip = device_ip,
             device_info = device_info,
+            device_name = device_name,
             is_active=True
         ).first()
     )
@@ -187,6 +206,7 @@ def check_session(  login_id,
         user_email=user_email,
         device_ip=device_ip,
         device_info=device_info,
+        device_name = device_name,
         access_token=access_token,
         refresh_token=refresh_token,
         created_at=now,
@@ -216,6 +236,7 @@ def get_active_devices_for_user(db: Session, user_email: str):
     sessions_per_device = (
         db.query(
             UserSession.device_ip,
+            UserSession.device_name,
             func.count(UserSession.session_id).label("session_count")
         )
         .filter(
@@ -223,13 +244,17 @@ def get_active_devices_for_user(db: Session, user_email: str):
             UserSession.is_active == True,
             UserSession.expires_at > now
         )
-        .group_by(UserSession.device_ip)
+        .group_by(UserSession.device_ip,UserSession.device_name)
         .all()
     )
     
     # Convert to list of dicts for frontend
     device_list = [
-        {"device_ip": d.device_ip, "session_count": d.session_count} 
+        {
+            "device_ip": d.device_ip,
+            "device_name": d.device_name,
+            "session_count": d.session_count
+        } 
         for d in sessions_per_device
     ]
     
