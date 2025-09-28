@@ -120,6 +120,49 @@ def logout_session(session_id: str, db:Session):
         return True
     return False
 
+
+def forced_logout(device_ip , request, db):
+
+    try:
+        now = datetime.utcnow()
+
+
+        sessions = db.query(UserSession).filter(
+            UserSession.device_ip == device_ip, UserSession.is_active == True
+        ).all()
+
+        # print(sessions)
+
+        if not sessions:
+            return {
+                "success": False,
+                "message": "No active sessions found for this device",
+                "affected_sessions": 0
+            }
+        
+        for session in sessions:
+            session.is_active = False
+            session.closed_at = now
+            session.closed_reason = "force_logout"
+            session.force_logged_by = device_ip
+            session.force_logged_at = now
+            session.force_logout_message = f"Force logged out by {device_ip}"
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Successfully force logged out {len(sessions)} sessions",
+            "affected_sessions": len(sessions)
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code= status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail = f"Force logout failed: {str(e)}"
+        )
+
 ## get user session 
 ## create user session
 

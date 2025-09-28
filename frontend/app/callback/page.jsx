@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
 import { AUTH_CONFIG } from '@/config'
 import { UAParser } from 'ua-parser-js'
+import { set } from 'zod'
 
 const Callback = () => {
     const router = useRouter()
@@ -12,6 +13,8 @@ const Callback = () => {
     const [errorData, setErrorData] = useState(null)
     const [deviceName, setDeviceName] = useState("")
     const [isLoading, setIsLoading] = useState(true)
+    const [isForceLoggingOut, setIsForceLoggingOut] = useState(false)
+    const [targetDevice, setTargetDevice] = useState(null)
 
     useEffect(() => {
         const parser = new UAParser()
@@ -58,7 +61,78 @@ const Callback = () => {
         login()
     }, [router, searchParams])
 
-     return (
+
+    // Handle force logout from another device
+    const handleForceLogout = async (deviceIP) => {
+        try{
+            setIsForceLoggingOut(true)
+            setTargetDevice(deviceIP)
+            
+            const res = await fetch(`${AUTH_CONFIG.BACKEND_URL}/logout/force`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json",
+                    "Accept": "application/json"
+                 },
+                credentials: "include",
+                body: JSON.stringify({ device_ip: deviceIP })
+            })
+
+            if (!res.ok){
+                throw new Error('Failed to logout from device')
+            }
+
+            const data = await res.json()
+
+        }catch (e){
+            console.error(e)
+        }finally{
+            setIsForceLoggingOut(false)
+            setTargetDevice(null)
+        }
+    }
+
+        const renderDeviceItem = (device, idx) => (
+                <div
+                    key={idx}
+                    className="bg-[#131B2E] border border-[#2C3B5B] rounded-lg p-4 hover:bg-[#1B2B4B] transition-all duration-200 group"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-1">
+                                <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
+                                <p className="text-white font-medium text-sm">{device.device_name}</p>
+                            </div>
+                            <p className="text-[#94A3B8] text-xs font-mono">{device.device_ip}</p>
+                            <p className="text-[#4A5568] text-xs mt-1">
+                                {device.session_count} session{device.session_count > 1 ? 's' : ''}
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => handleForceLogout(device.device_ip)}
+                            disabled={isForceLoggingOut}
+                            className={`
+                                text-[#FF4E64] text-xs px-3 py-1.5 rounded border 
+                                ${isForceLoggingOut && targetDevice === device.device_ip
+                                    ? 'bg-[#2D1B23] border-[#FF4E64] cursor-wait'
+                                    : 'border-[#FF4E64]/30 hover:border-[#FF4E64]/50 hover:bg-[#2D1B23]/50'
+                                }
+                                transition-all duration-200
+                            `}
+                        >
+                            {isForceLoggingOut && targetDevice === device.device_ip ? (
+                                <span className="flex items-center">
+                                    <div className="w-3 h-3 border-2 border-[#FF4E64]/30 border-t-[#FF4E64] rounded-full animate-spin mr-2"></div>
+                                    Logging out...
+                                </span>
+                            ) : (
+                                'Force Logout'
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )
+
+    return (
         <div className="min-h-screen bg-[#0F1724]">
             {/* Subtle gradient overlay */}
             <div className="fixed inset-0 bg-gradient-to-b from-[#131B2E] to-[#0F1724] pointer-events-none"></div>
@@ -124,37 +198,14 @@ const Callback = () => {
                                 </h2>
                                 
                                 {errorData.devices && errorData.devices.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {errorData.devices.map((device, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="bg-[#131B2E] border border-[#2C3B5B] rounded-lg p-4 hover:bg-[#1B2B4B] transition-all duration-200 group"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center space-x-2 mb-1">
-                                                            <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
-                                                            <p className="text-white font-medium text-sm">{device.device_name}</p>
-                                                        </div>
-                                                        <p className="text-[#94A3B8] text-xs font-mono">{device.device_ip}</p>
-                                                        <p className="text-[#4A5568] text-xs mt-1">
-                                                            {device.session_count} session{device.session_count > 1 ? 's' : ''}
-                                                        </p>
-                                                    </div>
-                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button className="text-[#FF4E64] hover:text-[#FF6B7E] text-xs px-2 py-1 rounded border border-[#FF4E64]/30 hover:border-[#FF4E64]/50">
-                                                            Force Logout
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <p className="text-[#4A5568]">No active devices found</p>
-                                    </div>
-                                )}
+                                        <div className="space-y-3">
+                                            {errorData.devices.map((device, idx) => renderDeviceItem(device, idx))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8">
+                                            <p className="text-[#4A5568]">No active devices found</p>
+                                        </div>
+                                    )}
                             </div>
                         </div>
 

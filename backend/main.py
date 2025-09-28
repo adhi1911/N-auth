@@ -3,7 +3,7 @@ import uuid
 import json 
 import jwt
 import requests
-from fastapi import FastAPI, status
+from fastapi import Body, FastAPI, status
 from typing import Annotated, Optional
 from fastapi import Depends, HTTPException, Response, Request
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 #in-code modules
 from core.config import Config
 from core.schemas import LoginRequest, SessionResponse, UserClaims
-from core.auth import get_current_user, process_login_token, validate_token, check_session, logout_session
+from core.auth import get_current_user, process_login_token, validate_token, check_session, logout_session, forced_logout
 from core.database.database import Base , engine, get_db
 from core.database.models import UserSession
 
@@ -98,6 +98,38 @@ async def logout(request: Request, db:Session = Depends(get_db)):
         status_code= status.HTTP_400_BAD_REQUEST,
         detail = "LogoutFailed"
     )
+
+@app.post("/logout/force")
+async def force_logout(device_ip: str= Body(...,embed=True), request: Request = None, db: Session = Depends(get_db)):
+    """
+    Get force logout history for a specific device
+    """    
+    try:
+        result = forced_logout(device_ip, request, db)
+        
+        if result["success"]:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=result
+            )
+        
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=result
+        )
+        
+    except HTTPException as he:
+        return JSONResponse(
+            status_code=he.status_code,
+            content={"success": False, "message": he.detail}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "message": str(e)}
+        )
+
+
 
 @app.get("/session/validate")
 def validate_session(request:Request, db: Session = Depends(get_db)):
