@@ -11,5 +11,7 @@ class Config:
     CLIENT_ID = os.getenv("CLIENT_ID")
     CLIENT_SECRET = os.getenv("CLIENT_SECRET")
     MAX_N = os.getenv("MAX_N")
+    SCOPE = os.getenv("SCOPE")
     BACKEND_URI = os.getenv("BACKEND_URI")
     FRONTEND_URI = os.getenv("FRONTEND_URI")
+    REDIRECT_URI = os.getenv("REDIRECT_URI")
