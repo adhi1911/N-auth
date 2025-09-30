@@ -11,6 +11,12 @@ class LoginRequest(BaseModel):
     device_info: Optional[str] = None
     device_name: Optional[str] = None
 
+
+class ForceLogoutRequest(BaseModel):
+    logout_device_ip: str
+    device_name: str
+    device_info: str
+    
 class CheckSessionRequest(BaseModel):
     login_id: str
     device_name: str | None = None

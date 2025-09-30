@@ -7,7 +7,7 @@ import { AUTH_CONFIG } from "@/config"
 
 export default function Home() {
   const router = useRouter()
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading,login, forceLogoutInfo,clearForceLogoutInfo } = useAuth()
   const [activeStep, setActiveStep] = useState(0)
   const n = AUTH_CONFIG.MAX_N
 
@@ -23,6 +23,46 @@ export default function Home() {
     }, 2000)
     return () => clearInterval(interval)
   }, [])
+
+  const ForceLogoutNotification = () => {
+    if (!forceLogoutInfo) return null
+
+    return (
+          <div className="fixed top-4 right-4 max-w-md w-full bg-[#2D1B23] border border-[#FF4E64] rounded-lg p-4 shadow-lg z-50">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <span className="text-xl">⚠️</span>
+              </div>
+              <div className="ml-3 w-full">
+                <h3 className="text-sm font-medium text-white">You were forcefully Logged out</h3>
+                <p className="mt-1 text-sm text-[#FF4E64]">
+                  {forceLogoutInfo.message}
+                </p>
+                <p className="mt-1 text-xs text-[#94A3B8]">
+                  {new Date(forceLogoutInfo.logged_out_at).toLocaleString()}
+                </p>
+                <div className="mt-3 flex space-x-4">
+                  <button
+                    onClick={clearForceLogoutInfo}
+                    className="text-xs text-white hover:text-[#FF4E64] transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearForceLogoutInfo()
+                      login()
+                    }}
+                    className="text-xs text-[#4B9EFD] hover:text-[#5BA8FF] transition-colors"
+                  >
+                    Continue to Login
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+  }
 
   if (loading) {
     return (
@@ -63,6 +103,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0F1724]">
+      <ForceLogoutNotification/>
       {/* Subtle gradient overlay */}
       <div className="fixed inset-0 bg-gradient-to-b from-[#131B2E] to-[#0F1724] pointer-events-none"></div>
 

@@ -50,8 +50,7 @@ if (loading) {
     )
   }
 
-  if (!isAuthenticated) {
-    router.push('/')
+  if (!loading && !isAuthenticated) {
     return null
   }
 

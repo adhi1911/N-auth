@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 #in-code modules
 from core.config import Config
-from core.schemas import LoginRequest, SessionResponse, UserClaims
+from core.schemas import ForceLogoutRequest, LoginRequest, SessionResponse, UserClaims
 from core.auth import get_current_user, process_login_token, validate_token, check_session, logout_session, forced_logout
 from core.database.database import Base , engine, get_db
 from core.database.models import UserSession
@@ -97,12 +97,29 @@ async def logout(request: Request, db:Session = Depends(get_db)):
     )
 
 @app.post("/logout/force")
-async def force_logout(device_ip: str= Body(...,embed=True), request: Request = None, db: Session = Depends(get_db)):
+async def force_logout(
+    request: Request,
+    payload: ForceLogoutRequest,  # Update parameter order
+    db: Session = Depends(get_db)
+):
     """
     Force logout all sessions for a specific device IP
     """    
     try:
-        result = forced_logout(device_ip, request, db)
+    
+        # print("Payload:", payload)
+        
+        device_ip = request.client.host
+        # print("Current device IP:", device_ip)
+        
+        result = forced_logout(
+            logout_device_ip=payload.logout_device_ip,
+            device_ip=device_ip,
+            device_name=payload.device_name,
+            device_info=payload.device_info,
+            request=request,
+            db=db
+        )
         
         if result["success"]:
             return JSONResponse(
@@ -119,11 +136,6 @@ async def force_logout(device_ip: str= Body(...,embed=True), request: Request = 
         return JSONResponse(
             status_code=he.status_code,
             content={"success": False, "message": he.detail}
-        )
-    except Exception as e:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"success": False, "message": str(e)}
         )
 
 
@@ -142,23 +154,49 @@ def validate_session(request:Request, db: Session = Depends(get_db)):
     ).first()
 
     if not session:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Session not found")
+        return JSONResponse(status_code = status.HTTP_200_OK,
+                            content={"valid":False, "reason":"session_not_found"})
     
     # print(session)
     now = datetime.utcnow()
+    print(session.is_active, session.closed_reason, session.expires_at, now)
+
+    if not session.is_active and session.closed_reason == "force_logout":
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "valid": False,
+                "reason": "force_logged_out",
+                "details": {
+                    "logged_out_by": session.force_logged_by,
+                    "logged_out_at": session.force_logged_at.isoformat(),
+                    "message": session.force_logout_message
+                }
+            }
+        )
+    
+    print("surpassed force logout check")
+    
     if not session.is_active or session.expires_at <= now:
         session.is_active = False
+        request.delete_cookie(key="session_id")
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Session expired or inactive")
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"valid": False, "reason": "session_expired"}
+        )
     
     session.last_active = now
     db.commit()
     print("Sesssion validation out")
-    return {"Success": True, "session_id":session.session_id,"user_id":session.user_id}
-
-
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "valid": True,
+            "session_id": session.session_id,
+            "user_id": session.user_id
+        }
+    )
 @app.post("/session/check")
 def post_check_session(payload: LoginRequest, request:Request,response: Response, db: Session = Depends(get_db)):
     login_id = payload.login_id

@@ -121,13 +121,16 @@ def logout_session(session_id: str, db:Session):
     return False
 
 
-def forced_logout(device_ip , request, db):
+def forced_logout(logout_device_ip,
+                  device_ip,
+                  device_name,
+                  device_info,
+                  request, db):
 
     try:
         now = datetime.utcnow()
-
         sessions = db.query(UserSession).filter(
-            UserSession.device_ip == device_ip, UserSession.is_active == True
+            UserSession.device_ip == logout_device_ip, UserSession.is_active == True
         ).all()
 
         # print(sessions)
@@ -145,7 +148,7 @@ def forced_logout(device_ip , request, db):
             session.closed_reason = "force_logout"
             session.force_logged_by = device_ip
             session.force_logged_at = now
-            session.force_logout_message = f"Force logged out by {device_ip}"
+            session.force_logout_message = f"Force logged out by {device_name} ({device_info})"
 
         db.commit()
 
@@ -157,6 +160,7 @@ def forced_logout(device_ip , request, db):
 
     except Exception as e:
         db.rollback()
+        print("Exception in forced_logout:", str(e))
         raise HTTPException(
             status_code= status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail = f"Force logout failed: {str(e)}"
@@ -215,7 +219,7 @@ def check_session(  login_id,
         if existing and existing.expires_at > now:
             existing.last_active = now
             # existing.access_token = access_token
-
+            print("Cookie exists")
             db.commit()
 
             response.set_cookie(
@@ -235,15 +239,24 @@ def check_session(  login_id,
         # if new device
         # check for MAX_N
         device_count = len(device_list)
-        if device_ip not in [d["device_ip"] for d in device_list] and device_count >= int(config.MAX_N):
+       
+        device_exists = any(d["device_ip"] == device_ip for d in device_list)
+        
+        if not device_exists and device_count >= int(config.MAX_N):
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail={"message": "Max devices reached", "devices": device_list}
             )
 
         # if allowed create new session
+        if existing:
+            existing.is_active = False
+            existing.closed_at = now
+            existing.closed_reason = "cookie_expired"
         session_id = str(uuid.uuid4())
         expires_at = now + timedelta(days=30)
+
+        print("Creating new session")
 
         new_session = UserSession(
             session_id=session_id,
@@ -278,6 +291,7 @@ def check_session(  login_id,
         raise he
     except Exception as e:
         db.rollback()
+        print("Exception in check_session:", str(e))
         raise HTTPException(
             status_code= status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail = f"Session creation failed: {str(e)}"
@@ -286,29 +300,51 @@ def check_session(  login_id,
 def get_active_devices_for_user(db: Session, user_email: str):
     now = datetime.utcnow()
 
-    sessions_per_device = (
+    # Get all active sessions with their IPs and counts
+    sessions_per_ip = (
         db.query(
             UserSession.device_ip,
-            UserSession.device_name,
-            func.count(UserSession.session_id).label("session_count")
+            func.count(UserSession.session_id).label("total_sessions"),
         )
         .filter(
             UserSession.user_email == user_email,
             UserSession.is_active == True,
             UserSession.expires_at > now
         )
-        .group_by(UserSession.device_ip,UserSession.device_name)
+        .group_by(UserSession.device_ip)
         .all()
     )
     
-    # Convert to list of dicts for frontend
+    # Get distinct device names per IP - Fix the syntax error here
+    device_names_query = (
+        db.query(
+            UserSession.device_ip,
+            UserSession.device_name
+        )
+        .filter(
+            UserSession.user_email == user_email,
+            UserSession.is_active == True,
+            UserSession.expires_at > now
+        )
+        .distinct()
+        .all()
+    )
+    
+    # Create IP to names mapping
+    ip_to_names = {}
+    for ip, name in device_names_query:
+        if ip not in ip_to_names:
+            ip_to_names[ip] = []
+        ip_to_names[ip].append(name)
+
+    # Combine the data
     device_list = [
         {
-            "device_ip": d.device_ip,
-            "device_name": d.device_name,
-            "session_count": d.session_count
-        } 
-        for d in sessions_per_device
+            "device_ip": ip,
+            "device_names": ip_to_names.get(ip, []),
+            "session_count": total_sessions
+        }
+        for ip, total_sessions in sessions_per_ip
     ]
     
     return device_list

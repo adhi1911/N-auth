@@ -7,11 +7,10 @@ import { useAuth } from '@/context/AuthContext'
 
 const Navbar = () => {
     const router = useRouter()
-    const { isAuthenticated, loading, logout } = useAuth()
+    const { isAuthenticated, loading, logout,login } = useAuth()
 
     const handleLogin = () => {
-        const loginUrl = `${AUTH_CONFIG.BACKEND_URL}/login`
-        window.location.href = loginUrl
+        login()
     }
 
     const handleLogout = async () => {

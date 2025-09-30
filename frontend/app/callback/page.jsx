@@ -49,6 +49,8 @@ const Callback = () => {
                     })
                 })
 
+                const data = await res.json()
+
                 if (res.ok) {
                     // router.push("/dashboard")
                     setTimeout(() => {
@@ -81,6 +83,7 @@ const Callback = () => {
 
         try {
             setIsForceLoggingOut(true)
+            // setForceLogoutError(null)
             setTargetDevice(deviceToLogout.device_ip)
             
             const res = await fetch(`${AUTH_CONFIG.BACKEND_URL}/logout/force`, {
@@ -91,15 +94,21 @@ const Callback = () => {
                 },
                 credentials: "include",
                 body: JSON.stringify({ 
-                    device_ip: deviceToLogout.device_ip 
+                    logout_device_ip: deviceToLogout.device_ip,
+                    device_name: deviceName || "Unknown Device",
+                    device_info: navigator.userAgent
                 })
             })
 
-            if (!res.ok) {
-                throw new Error('Failed to logout from device')
-            }
-
             const data = await res.json()
+
+            if (!res.ok) {
+                const err = await res.json()
+                console.log('Force logout failed:', err)
+                // setForceLogoutError(err)
+                setShowConfirmModal(false) // Hide confirm modal
+                return
+            }
             
             if (data.success) {
                 // Update UI
@@ -154,15 +163,29 @@ const Callback = () => {
                 >
                     <div className="flex items-center justify-between">
                         <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
+                            {/* IP Address */}
+                            <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
-                                <p className="text-white font-medium text-sm">{device.device_name}</p>
+                                <p className="text-white font-medium text-sm">{device.device_ip}</p>
                             </div>
-                            <p className="text-[#94A3B8] text-xs font-mono">{device.device_ip}</p>
-                            <p className="text-[#4A5568] text-xs mt-1">
-                                {device.session_count} session{device.session_count > 1 ? 's' : ''}
+
+                            {/* Device Names List */}
+                            <div className="space-y-1 ml-4 mb-2">
+                                {device.device_names.map((name, nameIdx) => (
+                                    <div key={nameIdx} className="flex items-center space-x-2">
+                                        <span className="text-[#94A3B8] text-xs">•</span>
+                                        <p className="text-[#94A3B8] text-xs">{name}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Session Count */}
+                            <p className="text-[#4A5568] text-xs mt-2">
+                                {device.session_count} active session{device.session_count > 1 ? 's' : ''}
                             </p>
                         </div>
+
+                        {/* Force Logout Button */}
                         <button
                             onClick={() => handleForceLogoutConfirm(device)}
                             disabled={isForceLoggingOut}
@@ -198,13 +221,23 @@ const Callback = () => {
                         <p className="text-[#94A3B8] mb-4">
                             Are you sure you want to force logout all sessions from this device?
                         </p>
-                        <div className="bg-[#131B2E] border border-[#2C3B5B] rounded-lg p-4 mb-6">
-                            <div className="flex items-center space-x-2">
-                                <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
-                                <p className="text-white font-medium">{deviceToLogout.device_name}</p>
+                            <div className="bg-[#131B2E] border border-[#2C3B5B] rounded-lg p-4 mb-6">
+                                <div className="flex items-center space-x-2 mb-2">
+                                    <div className="w-2 h-2 bg-[#4B9EFD] rounded-full"></div>
+                                    <p className="text-white font-medium">{deviceToLogout.device_ip}</p>
+                                </div>
+                                <div className="space-y-1 ml-4">
+                                    {deviceToLogout.device_names.map((name, idx) => (
+                                        <div key={idx} className="flex items-center space-x-2">
+                                            <span className="text-[#94A3B8] text-xs">•</span>
+                                            <p className="text-[#94A3B8] text-xs">{name}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-[#4A5568] text-xs mt-2">
+                                    {deviceToLogout.session_count} active session{deviceToLogout.session_count > 1 ? 's' : ''}
+                                </p>
                             </div>
-                            <p className="text-[#94A3B8] text-sm mt-1">{deviceToLogout.device_ip}</p>
-                        </div>
                         <div className="flex space-x-3">
                             <button
                                 onClick={() => setShowConfirmModal(false)}
@@ -224,6 +257,7 @@ const Callback = () => {
             )
         }
 
+        
 
     return (
         <div className="min-h-screen bg-[#0F1724]">
@@ -313,6 +347,7 @@ const Callback = () => {
                 ) : null}
             </div>
             {showConfirmModal && <ConfirmationModal />}
+
         </div>
     )
 }
