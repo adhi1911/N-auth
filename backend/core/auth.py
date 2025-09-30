@@ -126,7 +126,6 @@ def forced_logout(device_ip , request, db):
     try:
         now = datetime.utcnow()
 
-
         sessions = db.query(UserSession).filter(
             UserSession.device_ip == device_ip, UserSession.is_active == True
         ).all()
@@ -180,98 +179,109 @@ def check_session(  login_id,
     - if already active we reuse the same session
     - if not we check MAX_N and create new session accordingly
     """
-    print("Inside check")
-    if login_id not in PENDING_LOGINS:
-        raise HTTPException(status_code=400,
-                            detail="Invalid or expired login")
-    
-    login_data = PENDING_LOGINS.pop(login_id)
-    user_id = login_data["sub"]
-    user_email = login_data["email"]
+    try:
+        print("Inside check")
+        if login_id not in PENDING_LOGINS:
+            raise HTTPException(status_code=400,
+                                detail="Invalid or expired login")
+        
+        login_data = PENDING_LOGINS[login_id]
+        user_id = login_data["sub"]
+        user_email = login_data["email"]
 
-    access_token = login_data["tokens"]["access_token"]
-    refresh_token = login_data["tokens"]["refresh_token"]
+        access_token = login_data["tokens"]["access_token"]
+        refresh_token = login_data["tokens"]["refresh_token"]
 
-    # print(user_id, user_email)
+        # print(user_id, user_email)
 
-    now = datetime.utcnow()
+        now = datetime.utcnow()
 
-    # # filter active sessions for the user
-    device_list = get_active_devices_for_user(db, user_email)
-    print(device_list)
-    
+        # # filter active sessions for the user
+        device_list = get_active_devices_for_user(db, user_email)
+        print(device_list)
+        
 
-    # check active session for current device
-    existing =(
-        db.query(UserSession).filter_by(
-            user_email = user_email,
-            device_ip = device_ip,
-            device_info = device_info,
+        # check active session for current device
+        existing =(
+            db.query(UserSession).filter_by(
+                user_email = user_email,
+                device_ip = device_ip,
+                device_info = device_info,
+                device_name = device_name,
+                is_active=True
+            ).first()
+        )
+
+        if existing and existing.expires_at > now:
+            existing.last_active = now
+            # existing.access_token = access_token
+
+            db.commit()
+
+            response.set_cookie(
+                key="session_id",
+                value=existing.session_id,
+                httponly=True,
+                secure=False, #########
+                samesite="lax",
+                max_age=int((existing.expires_at - now).total_seconds())
+            )
+
+            PENDING_LOGINS.pop(login_id, None)
+            return SessionResponse(success=True, 
+                                session_id=existing.session_id, 
+                                message="Session reused")
+        
+        # if new device
+        # check for MAX_N
+        device_count = len(device_list)
+        if device_ip not in [d["device_ip"] for d in device_list] and device_count >= int(config.MAX_N):
+            raise HTTPException(
+                status_code=403,
+                detail={"message": "Max devices reached", "devices": device_list}
+            )
+
+        # if allowed create new session
+        session_id = str(uuid.uuid4())
+        expires_at = now + timedelta(days=30)
+
+        new_session = UserSession(
+            session_id=session_id,
+            user_id=user_id,
+            user_email=user_email,
+            device_ip=device_ip,
+            device_info=device_info,
             device_name = device_name,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            created_at=now,
+            last_active=now,
+            expires_at=expires_at,
             is_active=True
-        ).first()
-    )
-
-    if existing and existing.expires_at > now:
-        existing.last_active = now
-        # existing.access_token = access_token
-
+        )
+        db.add(new_session)
         db.commit()
 
         response.set_cookie(
             key="session_id",
-            value=existing.session_id,
+            value=session_id,
             httponly=True,
-            secure=False, #########
+            secure=False,   #################
             samesite="lax",
-            max_age=int((existing.expires_at - now).total_seconds())
+            max_age=int((expires_at - now).total_seconds())
         )
-        return SessionResponse(success=True, 
-                               session_id=existing.session_id, 
-                               message="Session reused")
-    
-    # if new device
-    # check for MAX_N
-    device_count = len(device_list)
-    if device_ip not in [d["device_ip"] for d in device_list] and device_count >= int(config.MAX_N):
+
+        print("Check out")
+        PENDING_LOGINS.pop(login_id, None)
+        return {"success": True, "session_id": session_id, "message": "New session created"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
-            status_code=403,
-            detail={"message": "Max devices reached", "devices": device_list}
+            status_code= status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail = f"Session creation failed: {str(e)}"
         )
-
-    # if allowed create new session
-    session_id = str(uuid.uuid4())
-    expires_at = now + timedelta(days=30)
-
-    new_session = UserSession(
-        session_id=session_id,
-        user_id=user_id,
-        user_email=user_email,
-        device_ip=device_ip,
-        device_info=device_info,
-        device_name = device_name,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        created_at=now,
-        last_active=now,
-        expires_at=expires_at,
-        is_active=True
-    )
-    db.add(new_session)
-    db.commit()
-
-    response.set_cookie(
-        key="session_id",
-        value=session_id,
-        httponly=True,
-        secure=False,   #################
-        samesite="lax",
-        max_age=int((expires_at - now).total_seconds())
-    )
-
-    print("Check out")
-
-    return {"success": True, "session_id": session_id, "message": "New session created"}
 
 def get_active_devices_for_user(db: Session, user_email: str):
     now = datetime.utcnow()

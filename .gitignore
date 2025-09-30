@@ -9,7 +9,7 @@ __pycache__
 backend/auth_sessions.sqlite3
 ## Frontend
 
-frontend/config.js
+
 # dependencies
 frontend/node_modules
 frontend/.pnp

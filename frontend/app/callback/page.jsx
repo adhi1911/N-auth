@@ -17,6 +17,7 @@ const Callback = () => {
     const [targetDevice, setTargetDevice] = useState(null)
     const [showConfirmModal, setShowConfirmModal] = useState(false)
     const [deviceToLogout, setDeviceToLogout] = useState(null)
+    const [shouldReload, setShouldReload] = useState(false)
 
 
     useEffect(() => {
@@ -49,7 +50,10 @@ const Callback = () => {
                 })
 
                 if (res.ok) {
-                    router.push("/dashboard")
+                    // router.push("/dashboard")
+                    setTimeout(() => {
+                        window.location.href = "/dashboard"
+                    }, 500)
                 } else {
                     const err = await res.json()
                     setErrorData(err.detail || { message: "Login denied" })
@@ -107,7 +111,9 @@ const Callback = () => {
                 // Redirect to continue login
                 const login_id = searchParams.get("login_id")
                 if (login_id) {
-                    window.location.reload()
+                    // router.refresh()
+                    // router.push(`/callback?login_id=${login_id}`)
+                    setShouldReload(true)
                 }
             }
 
@@ -120,6 +126,26 @@ const Callback = () => {
             setDeviceToLogout(null)
         }
     }
+
+    useEffect(() => {
+        if (shouldReload) {
+            const login_id = searchParams.get("login_id")
+            if (login_id) {
+                // reseting all states
+                setIsLoading(true)
+                setErrorData(null)
+                setDeviceToLogout(null)
+                setShowConfirmModal(false)
+                setIsForceLoggingOut(false)
+                setTargetDevice(null)
+                
+                setTimeout(() => {
+                    window.location.href = `/callback?login_id=${login_id}`
+                }, 500)
+            }
+            setShouldReload(false)
+        }
+    }, [shouldReload, searchParams])
 
         const renderDeviceItem = (device, idx) => (
                 <div

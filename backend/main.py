@@ -22,11 +22,8 @@ app = FastAPI()
 config = Config()
 
 origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8000",
-    "http://192.168.0.101:3000",
-    "http://192.168.0.101:8000"
+    f"{config.FRONTEND_URI}",
+    "http://127.0.0.1:3000"
 ]
 
 app.add_middleware(
@@ -102,7 +99,7 @@ async def logout(request: Request, db:Session = Depends(get_db)):
 @app.post("/logout/force")
 async def force_logout(device_ip: str= Body(...,embed=True), request: Request = None, db: Session = Depends(get_db)):
     """
-    Get force logout history for a specific device
+    Force logout all sessions for a specific device IP
     """    
     try:
         result = forced_logout(device_ip, request, db)
@@ -151,7 +148,7 @@ def validate_session(request:Request, db: Session = Depends(get_db)):
     # print(session)
     now = datetime.utcnow()
     if not session.is_active or session.expires_at <= now:
-        session.is_active = "false"
+        session.is_active = False
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Session expired or inactive")
